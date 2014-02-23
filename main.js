@@ -54,6 +54,8 @@ var createNoteRange = function(lowest,highest){
 	return range;
 }
 
+// this needs to be fixed for the first octave
+
 var octaveFromNoteNumber = function(n){
 	return Math.floor((n-4)/12)+1;
 }
@@ -104,8 +106,8 @@ for(key in noterange.notes){
 
 SynthBox.prototype = {
 
-	play: function(playnote){
-		this[playnote].gain.gain.value = 1;
+	play: function(playnote,volume){
+		this[playnote].gain.gain.value = volume;
 		
 	},
 
@@ -118,29 +120,23 @@ SynthBox.prototype = {
 // Takes a scale note array, mode as string and notestring,
 // returns an array of note numbers
 
-var createMelodyFromPattern = function(pattern,mode,notestring) {
-	var melody = [];
+var modeNumToNoteNum = function(modeNote,mode,notestring) {
+
+	if(modeNote === 0){
+		return '';
+	}
+
 	var baseNumber = noteStringToNoteNumber(notestring);
 
-	for(var n = 0; n < pattern.length; n++){
+	var intervalSum = baseNumber;
 
-		var intervalSum = baseNumber;
+		for(var i = 1; i < modeNote; i++){
 
-		
-
-		for(var i = 1; i < pattern[n]; i++){
-
-			
 			intervalSum += mode[i];
 		}
 		
-		melody.push(intervalSum);
-
-	}
-
-	return melody;
+	return intervalSum;
 }
-
 
 var noteStringToNoteNumber = function(notestring){
 	for(key in noterange.notes){
@@ -154,12 +150,16 @@ var noteStringToNoteNumber = function(notestring){
 	
 }
 
-
-
 // handle time, calculate beats and measures
 // Array -> 
 
 var startTick = function(melody){
+
+	mySynthBoxes = [];
+
+	for(var i = 0; i < melody.length; i++){
+	mySynthBoxes[i] = new SynthBox(noterange);
+	}
 
 	playing = true;
 	var frame = 0;
@@ -180,7 +180,7 @@ var startTick = function(melody){
 		beat += 1;
 		measure = Math.floor(beat/rhythm) === measure ? measure : measure +1;
 		
-		playMelodyOnBeat(beat,melody);
+		playMelodyOnBeat(beat,melody,mySynthBoxes);
 	}
 	
 }
@@ -193,22 +193,19 @@ setTimeout(function() {
 requestAnimationFrame(tick);
 }
 
-var screenShapes = {
-
-
-
-};
+var screenShapes = [];
 
 // playnote string -> object
 
-var Shape = function(playnote){
-
-	this.x = (mySynthBox[playnote].number-14)*(width/noterange.length);
-	this.y = height/2;
+var Shape = function(playnote,row){
+	
+	this.x = (mySynthBoxes[row][playnote].number-14)*(width/noterange.length);
+	this.y = (height/2)+row*40;
 
 	this.width = width/noterange.length;
-	this.height = height/4;
+	this.height = 40;
 	this.opacity = 0;
+
 
 }
 
@@ -221,7 +218,6 @@ Shape.prototype = {
 	},
 
 	draw: function(){
-
 
 		c.beginPath();
 		c.rect(this.x,this.y,this.width,this.height);
@@ -236,9 +232,16 @@ Shape.prototype = {
 
 var prepareVis = function(melody){
 
-	for(var i = 0; i < melody.length; i++){
-		if(melody[i] !== ''){
-			screenShapes[melody[i]] = new Shape(melody[i]);
+	// for every parallel synth
+	for(var s = 0; s < melody.length; s++){
+
+		screenShapes[s] = {};
+
+		for(var m = 0; m < melody[s].length; m++)
+
+		if(melody[s][m] !== ''){
+
+			screenShapes[s][melody[s][m]] = new Shape(melody[s][m],s);
 		}
 	}
 
@@ -248,10 +251,17 @@ var drawScreen = function(){
 
 	c.clearRect(0,0,width,height);
 
-	for(var obj in screenShapes){
+	//for every melody
 
-		screenShapes[obj].update();
-		screenShapes[obj].draw();
+	for(var m = 0; m < screenShapes.length; m++){
+
+	//for every note
+		for(var obj in screenShapes[m]){
+
+		screenShapes[m][obj].update();
+		screenShapes[m][obj].draw();
+
+	}
 
 	}
 
@@ -265,11 +275,16 @@ var drawScreen = function(){
 
 
 //
-// Natural, Array -> 
+// Play melody on beat for every synthbox
 
-var playMelodyOnBeat = function(beat,melody){
+var playMelodyOnBeat = function(beat,melody,synthboxes){
 
-	switch(melody[beat-1]) {
+
+	// play for every synthbox
+
+	for(var i = 0; i < synthboxes.length; i++){
+
+	switch(melody[i][beat-1]) {
 
 	// If no more notes to play
 	case undefined:
@@ -284,19 +299,30 @@ var playMelodyOnBeat = function(beat,melody){
 
 	// Otherwise playing the note
 	default:
-	var playnote = melody[beat-1];
 
-	mySynthBox.play(playnote);
+	var playnote = melody[i][beat-1];
+	var volume = 1/synthboxes.length;
 
-	screenShapes[playnote].opacity = 1;
-	
-	//console.log("Playing " + playnote);
+	synthboxes[i].play(playnote,volume);
 
-	setTimeout(function(){
+	screenShapes[i][playnote].opacity = 1;
+
+	silenceNote(synthboxes[i],playnote,i);
+
+	function silenceNote(synth,note,index){
+
+		setTimeout(function(){
 		
-		mySynthBox.pause(playnote);
-		screenShapes[playnote].visible = false;
+		synth.pause(note);
+
+		screenShapes[index][note].visible = false;
 	}, notelength);
+
+
+	}
+	
+
+}
 
 }
 
@@ -404,37 +430,110 @@ var noterange = createNoteRange(-35,48);
 var fps = 60;
 var beat = 0;
 var rhythm = 4;
-var tempo = 220;
-var notelength = 60000/tempo/2;
+var tempo = 500;
+var notelength = 60000/tempo/1.5;
 
 var audio = new window.webkitAudioContext();
 
 var personality = new Personality();
 var keyboard = new Keyboard();
 
-var mySynthBox = new SynthBox(noterange);
+function createCanon(melody,depth,shift){
 
-var arpeggios = [
+	var depth = depth;
+	var canon = [];
 
-createMelodyFromPattern([1,3,5,3,1,3,5,3], modes['ionian'], 'C4'),
-createMelodyFromPattern([1,3,5,3,1,3,5,3], modes['dorian'], 'D4'),
-createMelodyFromPattern([1,3,5,3,1,3,5,3], modes['phrygian'], 'E4'),
-createMelodyFromPattern([1,3,5,3,1,3,5,3], modes['lydian'], 'F4'),
-createMelodyFromPattern([1,3,5,3,1,3,5,3], modes['mixolydian'], 'G4'),
-createMelodyFromPattern([1,3,5,3,1,3,5,3], modes['aeolian'], 'A4'),
-createMelodyFromPattern([1,3,5,3,1,3,5,3], modes['locrian'], 'B4')
+	// for every depth
+	for(var d = 0; d < depth; d++){
 
-];
+		var thisMelody = melody.slice();
+
+			// for every position except the melody
+			for(var s = 0; s < melody.length+(shift*(depth-1)); s++){
+				//console.log(s);
+				if(s < shift*d){
+					//console.log("first empty at " + s);
+					thisMelody[s] = '';
+				}
+
+				else if(s > (shift*d) + melody.length-1){
+					//console.log("last empty at " + s);
+					thisMelody[s] = '';
+				}
+
+				else {
+					//console.log("melody is at " + s);
+					thisMelody[s] = melody[s-(d*shift)];
+
+		}
+
+		
+		}
+		canon.push(thisMelody);
+		
+		
+	}
+
+	return canon;
+
+}
+
+
+function randomMelody(mode, key, length){
+
+	var melody = [];
+
+	for(var i = 0; i < length; i++){
+
+		var number = i === 0 || i === length-1 ? 1 : Math.floor(Math.random()*7);
+
+		melody.push(modeNumToNoteNum(number, modes[mode],key))
+
+	}
+
+	return melody;
+
+}
+
+
+function scaleRuns(){
+
+	var melody = [];
+
+	for(var i = 3; i < 8; i++){
+
+		var part = randomMelody('ionian','C'+i, 4).concat(
+					randomMelody('dorian','D'+i, 4),
+					randomMelody('phrygian','E'+i, 4),
+					randomMelody('lydian','F'+i, 4),
+					randomMelody('mixolydian','G'+i, 4),
+					randomMelody('aeolian','A'+i, 4),
+					randomMelody('locrian','B'+i, 4)
+
+			);
+
+		melody = melody.concat(part);
+
+	}
+
+	return melody;
+
+}
+
 
 window.onload = function(){
 
 	setCanvas("myCanvas",width,height);
-	var melody = createRandomProgression(8);
-	startTick(melody);
+
+	melody = scaleRuns();
+
+	// melody, depth, shift
+	canon = createCanon(melody,4,2);
+
+	var melodyToPlay = canon;
+	
+	startTick(melodyToPlay);
 	
 }
 
-
 })(this);
-
-

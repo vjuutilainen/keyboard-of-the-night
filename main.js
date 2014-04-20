@@ -580,7 +580,10 @@ window.onload = function(){
 		},wait);
 	}
 	
-	playLoop();
+	setTimeout(function(){
+		playLoop();
+	},2000);
+	
 }
 
 })(this);

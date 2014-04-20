@@ -1,10 +1,472 @@
 ;(function (exports){
 
-	var createModes = function(){
+	var Keyboard = function(c){
+
+		this.width = c.canvas.clientWidth;
+		this.height = c.canvas.clientHeight;
+
+		this.canvas = c.canvas;
+
+		this.notes = this.createNotes();
+		
+		this.c = c;
+
+		this.display = new Display(this);
+		this.synth = new Synth(this);
+		this.personality = new Personality(this);
+		this.input = new Input(this);
+		this.player = new Player(this);
+
+	};
+
+
+	Keyboard.prototype = {
+
+		update: function(){
+
+			this.input.update();
+			this.personality.update();
+			this.display.update();
+			this.render();
+
+		},
+
+		render: function(){
+
+			this.c.clearRect(0,0,this.width,this.height);
+			this.display.draw(this.c);
+			this.personality.draw(this.c);
+			
+
+		},
+
+	// Create note objects containing frequency and note name
+	createNotes: function(){
+
+		var lowest = 1;
+		var highest = 89;
+		var notes = {};
+		var NOTELETTERS = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
+
+		var createFreq = function(steps){
+			return 440 * Math.pow(Math.pow(2,1/12),steps);
+		};
+
+		for(var i = lowest; i < highest; i++){
+			notes[i] = {frequency: createFreq(i-49),
+						letter: NOTELETTERS[(i+8)%12],
+						octave: Math.floor((i+8)/12) };
+		}
+
+		return notes;
+	
+	},
+
+	playKey: function(notenumber,time){
+
+		var _this = this;
+		this.synth.playNote(notenumber,time);
+		
+		setTimeout(function(){
+			_this.display.lightKey(notenumber);
+		},time*1000);
+
+	},	
+
+	playMelody: function(melody){
+
+		this.player.play(melody);
+		this.personality.setMood(melody);
+
+	}
+
+
+};
+
+var handleMouseClick = function(mouseEvent,keyboard){
+
+	var x = mouseEvent.pageX;
+	var y = mouseEvent.pageY;
+
+	var clickCheck = function(mouseEvent){
+
+		var result = false;
+		
+		keyboard.display.keys.forEach(function(key){
+			
+			if((x > key.x && x < key.x+key.width) &&
+			   (y > key.y && y < key.y+key.height)){
+			   	
+				result = key.notenumber;
+			}
+
+		});
+
+		return result;
+
+	}
+
+	var clickResult = clickCheck(mouseEvent);
+
+	if(clickResult !== false){
+		keyboard.playKey(clickResult,0);
+	};
+
+};
+
+var Input = function(keyboard){
+	
+	this.keyboard = keyboard;
+	keyboard.canvas.addEventListener('mousedown',function(mouseEvent){
+		handleMouseClick(mouseEvent,keyboard)
+	});
+};
+
+Input.prototype = {
+
+	update: function(){
+
+
+	}
+
+
+}
+
+
+// Synth constructor
+
+var Synth = function(keyboard) {
+
+	this.keyboard = keyboard;
+	this.audio = new window.webkitAudioContext();
+	this.noteLength = 0.5;
+	this.noteAttack = 0.1;
+	this.noteDecay = 0.1;
+	this.noteVolume = 1;
+
+};
+
+Synth.prototype = {
+
+	playNote: function(notenumber,time){
+
+		var now = time + this.audio.currentTime;
+
+		this.sound = this.audio.createOscillator();
+
+		// GainNode -> Destination
+		this.gainNode = this.audio.createGainNode();
+		this.gainNode.connect(this.audio.destination);
+		
+		// Oscillator -> GainNode
+		this.sound.connect(this.gainNode);
+		this.sound.frequency.value = this.keyboard.notes[notenumber].frequency;
+
+		// Fade in
+		this.gainNode.gain.linearRampToValueAtTime(0, now);
+		this.gainNode.gain.linearRampToValueAtTime(this.noteVolume, now + this.noteAttack);
+
+		// Fade out
+		this.gainNode.gain.linearRampToValueAtTime(this.noteVolume, now + this.notelength - this.noteDecay);
+		this.gainNode.gain.linearRampToValueAtTime(0, now + this.noteLength);
+
+		this.sound.start(now);
+
+		this.sound.stop(now + 0.5);
+		
+	},
+
+	pause: function(notenumber){
+		
+	}
+
+}
+
+var Player = function(keyboard){
+
+	this.keyboard = keyboard;
+	this.tempo = 120;
+	this.beatLength = 60 / this.tempo;
+}
+
+Player.prototype = {
+
+	play: function(melody){
+		
+		var _this = this;
+		this.tempo = melody.tempo ? melody.tempo : this.tempo;
+		this.beatLength = 60 / this.tempo;
+
+		melody.notes.forEach(function(noteElement, index){
+			
+			if(typeof noteElement === 'object'){
+				noteElement.forEach(function(subNoteElement, subindex){
+					if(typeof subNoteElement === 'number'){
+					_this.keyboard.playKey(subNoteElement,subindex*_this.beatLength);
+				}
+				});
+			}
+
+			if(typeof noteElement === 'number'){
+				_this.keyboard.playKey(noteElement,index*_this.beatLength);
+			}
+
+		});
+		
+	}
+
+};
+
+var Personality = function(keyboard){
+
+	this.keyboard = keyboard;
+	this.opacity = 0.5;
+	this.x = keyboard.width/2-100;
+	this.x2 = keyboard.width/2+100;
+	this.y = 60;
+	this.r = 50;
+	this.delta = 0.01;
+	this.rotation = 0;
+	this.rotationTarget = 0;
+	
+
+}
+
+Personality.prototype = {
+
+	draw: function(c){
+
+		c.save();
+		c.fillStyle = 'rgba(255,255,255,'+this.opacity+')';
+		c.beginPath();
+		c.translate(this.x,this.y);
+		c.rotate(this.rotation*Math.PI/180);
+		c.translate(-this.x,-this.y);
+		c.arc(this.x, this.y, this.r, 0, 1 * Math.PI, false);
+		c.closePath();
+		c.fill();
+		c.restore();
+
+		c.save();
+		c.fillStyle = 'rgba(255,255,255,'+this.opacity+')';
+		c.beginPath();
+		c.translate(this.x2,this.y);
+		c.rotate(-this.rotation*Math.PI/180);
+		c.translate(-this.x2,-this.y);
+		c.arc(this.x2, this.y, this.r, 0, 1 * Math.PI, false);
+		c.closePath();
+		c.fill();
+		c.restore();
+
+	},
+
+	update: function(){	
+		
+		this.delta = this.opacity > 0.6 ? -0.003 : this.opacity < 0.3 ? 0.003 : this.delta;
+		this.opacity = this.opacity + this.delta;
+		this.rotation = this.rotation > this.rotationTarget ? this.rotation - 0.05 : this.rotation < this.rotationTarget ? this.rotation + 0.05 : this.rotation;
+
+	},
+
+	setMood: function(melody){
+
+		if(melody.mode === 'locrian'){
+			this.rotationTarget = 10;
+		}
+		if(melody.mode === 'aeolian'){
+			this.rotationTarget = -10;
+		}
+		if(melody.mode === 'dorian' || melody.mode === 'phrygian' || melody.mode === 'lydian'){
+			this.rotationTarget = -5;
+		}
+		if(melody.mode === 'ionian' || melody.mode === 'mixolydian'){
+			this.rotationTarget = 0;
+		}
+
+	}
+
+
+};
+
+var Display = function(keyboard){
+
+	this.keyboard = keyboard;
+	this.paddingTop = 200;
+	this.x = 0;
+	this.y = this.paddingTop;
+	this.width = keyboard.width;
+	this.height = keyboard.height-this.paddingTop;
+	this.keywidth = this.width/12;
+	this.keyheight = this.height/9;
+	this.keys = [];
+	for(var i = 0; i < Object.keys(this.keyboard.notes).length; i++){
+		this.keys.push(new Key(this.keyboard.notes[i+1], i, this));
+	}
+
+}
+
+Display.prototype = {
+
+	update: function(){
+
+		this.keys.forEach(function(key){
+		
+			key.lightness = key.lightness > 0.03 ? key.lightness - 0.03 : key.lightness <= 0.03 ? 0 : key.lightness;	
+
+		});
+
+	},
+
+	lightKey: function(notenumber){
+
+		this.keys[notenumber-1].lightness = 1;
+	},
+
+	draw: function(c){
+
+		this.keys.forEach(function(key){
+			key.draw(c);
+		});
+
+	}
+
+}
+
+var Key = function(note,index,display){
+
+	this.display = display;
+	this.width = display.keywidth;
+	this.height = display.keyheight;
+	this.lightness = 0;
+	this.index = index;
+	this.notenumber = index+1;
+	this.note = note;
+	this.x = this.width*((this.index+9)%12);
+	this.y = this.display.keyboard.height-this.height-(this.height*Math.floor((this.index+9)/12));
+
+}
+
+Key.prototype = {
+
+	update: function(){
+		
+
+	},
+
+	draw: function(c){
+
+		c.beginPath();
+		c.rect(this.x,this.y,this.width,this.height);
+		c.fillStyle = 'rgba(255,255,255,'+this.lightness+')';
+		c.strokeStyle = 'black';
+		c.stroke();
+		c.fill();
+		c.closePath();
+
+		// c.beginPath();
+		// c.fillStyle = '#666';
+		// c.font = '10px Helvetica';
+		// c.fillText(this.note.letter+this.note.octave,(this.width/2)+this.x,(this.height/2)+this.y);
+		// c.fill();
+		// c.closePath();
+
+	}
+
+}
+
+
+// Composer constructor
+
+var Composer = function(){
+
+	this.NOTELETTERS = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
+	this.modePatterns = this.createModePatterns();
+
+	// compose only with certain notes, 88 is highest note number, lowest 1
+	this.lowLimit  = 40; // C4
+	this.highLimit = 88; // C8
+	this.noterange = this.highLimit-this.lowLimit;
+	this.tempo = 500;
+
+}
+
+Composer.prototype = {
+
+	getRandomMode: function(){
+		return Object.keys(this.modePatterns)[Math.floor(Math.random()*Object.keys(this.modePatterns).length)];
+	},
+
+	getRandomKey: function(){
+		return this.NOTELETTERS[Math.floor(Math.random()*this.NOTELETTERS.length)];
+	},
+
+	createRandomMelody: function(length){
+
+	var melody = [];
+
+	for(var i = 0; i < length; i++){
+		melody.push(Math.round(Math.random()*this.noterange) + this.lowLimit);
+	}
+	
+	return {notes: melody,
+			tempo: this.tempo};
+	},
+
+	createRandomModeMelody: function(mode, key, length){
+
+		var _this = this;
+		var modeMelody = [];
+
+		var getModeNoteNumbers = function(modeletters){
+
+			var numbers = [];
+
+			for(var i = _this.lowLimit; i <= _this.highLimit; i++){		
+				modeletters.forEach(function(letter){
+					if(_this.NOTELETTERS[(i+8)%12] === letter){
+						numbers.push(i);
+					}
+				});
+			}
+
+			return numbers;
+		};
+
+		var getModeScaleLetters = function(mode,key){
+
+			var modePattern = _this.modePatterns[mode];
+			var scaleLetters = [];
+			var letterIndex = _this.NOTELETTERS.indexOf(key);
+			var intervalSum = 0;
+
+			modePattern.forEach(function(interval,index){
+				intervalSum += interval;				
+				scaleLetters.push(_this.NOTELETTERS[(letterIndex+intervalSum)%12]);
+			});	
+
+			return scaleLetters;
+		};
+
+		var modeScaleLetters = getModeScaleLetters(mode,key);
+		
+
+		var modeNumbers = getModeNoteNumbers(modeScaleLetters);
+	
+
+		for(var i = 0; i < length; i++){
+			modeMelody.push(modeNumbers[Math.floor(Math.random()*modeNumbers.length)]);
+		};
+
+		return {notes: modeMelody,
+				tempo: this.tempo};
+	},
+
+	// Returns interval patterns for seven modes in an object
+
+		createModePatterns: function(){
 
 		var modeShift = 0;
 		var modes = {
-
 			ionian: [],
 			dorian: [],
 			phrygian: [],
@@ -12,528 +474,113 @@
 			mixolydian: [],
 			aeolian: [],
 			locrian: []
-
 		}
 
-		var intervals = [2,2,2,1,2,2,2,1];
+		var intervals = [2,2,1,2,2,2,1];
 
-		for(key in modes){
-			
-		// shift array by one
-		var first = intervals.slice(0,modeShift);
-		var last = intervals.slice(modeShift,intervals.length);
-		
-		modes[key] = last.concat(first);
-
-		modeShift += 1;
-	};
+		for(key in modes){		
+			var first = intervals.slice(0,modeShift);
+			var last = intervals.slice(modeShift,intervals.length);
+			modes[key] = last.concat(first);
+			modeShift += 1;
+		};
 
 	return modes;
 
-}
-
-
-// Create note data for a given semitone range with a base of 440
-// Number, Number -> notes object
-
-var createNoteRange = function(lowest,highest){
-	var baseNoteNum = 49 + lowest;
-	var noteIndex = 9+lowest;
-	var range = {length: highest-lowest, notes: {} };
-
-	for(var i = lowest; i <= highest; i++){
-
-		var noteNum =  baseNoteNum + (i-lowest);
-		var octave = octaveFromNoteNumber(noteNum);
-		var noteLetter = NOTES[(i-lowest)%NOTES.length];
-		var noteString = NOTES[(i-lowest)%NOTES.length]+octave;
-		var noteFreq = createFreq(i);
-		range.notes[noteNum] = { num: noteNum, string: noteString, note: noteLetter, freq: noteFreq}; 
-	}
-
-	return range;
-}
-
-// this needs to be fixed for the first octave
-
-var octaveFromNoteNumber = function(n){
-	return Math.floor((n-4)/12)+1;
-}
-
-// semitones from 440 base -> frequency
-
-var createFreq = function(steps){
-	return 440 * Math.pow(Math.pow(2,1/12),steps);
-}
-
-// Synthbox constructor, methods for playing and pausing notes
-// Notes object -> Synthbox object
-
-var SynthBox = function(noterange) {
-
-// add synths based on data as objects
-
-for(key in noterange.notes){
-
-	var objName = noterange.notes[key].num;
-	this[objName] = {
-
-		frequency: noterange.notes[key].freq,
-		note: noterange.notes[key].note,
-		string: noterange.notes[key].string,
-		number: noterange.notes[key].num,
-		sound: audio.createOscillator(),
-		gain: audio.createGainNode()
-
-	}
-	
-	// define frequency
-	this[objName].sound.frequency.value = this[objName].frequency;
-	
-	// Oscillator -> GainNode
-	this[objName].sound.connect(this[objName].gain);
-	
-	// GainNode -> Destination
-	this[objName].gain.connect(audio.destination);
-
-	// Play in silence
-	this[objName].gain.gain.value = 0;
-	this[objName].sound.start();
-
-}
-
-};
-
-SynthBox.prototype = {
-
-	play: function(playnote,volume){
-		this[playnote].gain.gain.value = volume;
-		
 	},
 
-	pause: function(playnote){
-		this[playnote].gain.gain.value = 0;
-	}
+	createCanonMelody: function(mode,key,length,depth,shift){
 
-}
+	var melody = this.createRandomModeMelody(mode,key,length);
+	var depth = depth;
+	var canon = [];
+	
+	for(var d = 0; d < depth; d++){
 
-// Takes a scale note array, mode as string and notestring,
-// returns an array of note numbers
+		var thisMelody = melody.notes.slice();
 
-var modeNumToNoteNum = function(modeNote,mode,notestring) {
-
-	if(modeNote === 0){
-		return '';
-	}
-
-	var baseNumber = noteStringToNoteNumber(notestring);
-
-	var intervalSum = baseNumber;
-
-		for(var i = 1; i < modeNote; i++){
-
-			intervalSum += mode[i];
-		}
-		
-	return intervalSum;
-}
-
-var noteStringToNoteNumber = function(notestring){
-	for(key in noterange.notes){
-		if(noterange.notes[key].string === notestring){
-			return noterange.notes[key].num; 
+			for(var s = 0; s < melody.notes.length+(shift*(depth-1)); s++){
+				if(s < shift*d){
+					thisMelody[s] = '';
+				}
+				else if(s > (shift*d) + melody.notes.length-1){
+					thisMelody[s] = '';
+				}
+				else {
+					thisMelody[s] = melody.notes[s-(d*shift)];
 		}
 
-	}
-	
-	return -1;
-	
-}
-
-// handle time, calculate beats and measures
-// Array -> 
-
-var startTick = function(melody){
-
-	mySynthBoxes = [];
-
-	for(var i = 0; i < melody.length; i++){
-	mySynthBoxes[i] = new SynthBox(noterange);
-	}
-
-	playing = true;
-	var frame = 0;
-	var beat = 0;
-	var measure = 0;
-	var tempomodifier = (60/tempo) * 60;
-	prepareVis(melody);
-
-	var tick = function(){
-
-		drawScreen();
-
-		if(playing){
-			frame += 1;
-	// if it's time for a new beat
-	if(Math.floor(frame/tempomodifier) !== beat){
-
-		beat += 1;
-		measure = Math.floor(beat/rhythm) === measure ? measure : measure +1;
-		
-		playMelodyOnBeat(beat,melody,mySynthBoxes);
-	}
-	
-}
-
-setTimeout(function() {
-	requestAnimationFrame(tick);
-}, 1000 / fps);
-}
-
-requestAnimationFrame(tick);
-}
-
-var screenShapes = [];
-
-// playnote string -> object
-
-var Shape = function(playnote,row){
-	
-	this.x = (mySynthBoxes[row][playnote].number-14)*(width/noterange.length);
-	this.y = (height/2)+row*40;
-
-	this.width = width/noterange.length;
-	this.height = 40;
-	this.opacity = 0;
-
-
-}
-
-Shape.prototype = {
-
-	update: function(){
-		this.opacity = this.opacity < 0.05 ? 0 : this.opacity - 0.05;
-
-
-	},
-
-	draw: function(){
-
-		c.beginPath();
-		c.rect(this.x,this.y,this.width,this.height);
-		c.fillStyle = 'rgba(255,255,255,'+this.opacity+')';
-		c.fill();
-		c.closePath();
-
-
-	}
-
-}
-
-var prepareVis = function(melody){
-
-	// for every parallel synth
-	for(var s = 0; s < melody.length; s++){
-
-		screenShapes[s] = {};
-
-		for(var m = 0; m < melody[s].length; m++)
-
-		if(melody[s][m] !== ''){
-
-			screenShapes[s][melody[s][m]] = new Shape(melody[s][m],s);
 		}
-	}
-
-}
-
-var drawScreen = function(){
-
-	c.clearRect(0,0,width,height);
-
-	//for every melody
-
-	for(var m = 0; m < screenShapes.length; m++){
-
-	//for every note
-		for(var obj in screenShapes[m]){
-
-		screenShapes[m][obj].update();
-		screenShapes[m][obj].draw();
-
-	}
-
-	}
-
-		//keyboard.draw();
-
-		personality.update();
-		personality.draw();
-
-
-	}
-
-
-//
-// Play melody on beat for every synthbox
-
-var playMelodyOnBeat = function(beat,melody,synthboxes){
-
-
-	// play for every synthbox
-
-	for(var i = 0; i < synthboxes.length; i++){
-
-	switch(melody[i][beat-1]) {
-
-	// If no more notes to play
-	case undefined:
-	//console.log("Stopping the play");
-	playing = false;
-	break;
-
-	// If there's a rest
-	case '':
-	//console.log("Rest");
-	break;
-
-	// Otherwise playing the note
-	default:
-
-	var playnote = melody[i][beat-1];
-	var volume = 1/synthboxes.length;
-
-	synthboxes[i].play(playnote,volume);
-
-	screenShapes[i][playnote].opacity = 1;
-
-	silenceNote(synthboxes[i],playnote,i);
-
-	function silenceNote(synth,note,index){
-
-		setTimeout(function(){
 		
-		synth.pause(note);
-
-		screenShapes[index][note].visible = false;
-	}, notelength);
-
-
+		canon.push(thisMelody);		
 	}
-	
+
+	return {notes: canon,
+				tempo: this.tempo,
+				mode: mode};
 
 }
 
 }
 
-}
+// The world
 
+var bigBang = function(object){
+
+	var fps = 60;
+
+	var loop = function(){
+
+		object.update();
+		
+		setTimeout(function() {
+			requestAnimationFrame(loop);
+		}, 1000 / fps);
+	}
+
+	requestAnimationFrame(loop);
+
+}
 
 // initialize canvas
 
-var setCanvas = function(canvasId,width,height){
+var getCanvas = function(canvasId,width,height){
 
-	canvas = document.getElementById(canvasId);
+	var canvas = document.getElementById(canvasId);
 	canvas.width = width;
 	canvas.height = height;
-	c = canvas.getContext("2d");
+	return canvas.getContext("2d");
 
 }
-
-var Personality = function(){
-
-	this.opacity = 0.5;
-	this.x = width/2-100;
-	this.x2 = width/2+100;
-	this.y = 100;
-	this.r = 50;
-	this.delta = 0.01;
-
-}
-
-var Keyboard = function(){
-
-	this.padding = 20;
-	this.x = width/noterange.length;
-	this.y = height/2;
-	this.w = width/noterange.length;
-	this.h = height/4;
-}
-
-Keyboard.prototype = {
-
-	draw: function(){
-
-		for(var i = 0; i < noterange.length; i++){
-			
-			c.beginPath();
-			c.rect(this.x*i,this.y,this.w,this.h);
-			c.strokeStyle = 'rgba(255,255,255,1)';
-			c.stroke();
-			c.closePath();
-
-		}
-
-	}
-}
-
-Personality.prototype = {
-
-	draw: function(){
-
-		c.fillStyle = 'rgba(255,255,255,'+this.opacity+')';
-
-		c.beginPath();
-
-		c.arc(this.x, this.y, this.r, 0, 1 * Math.PI, false);
-
-		c.closePath();
-
-		c.fill();
-
-		c.beginPath();
-		c.arc(this.x2, this.y, this.r, 0, 1 * Math.PI, false);
-		c.closePath();
-
-		c.fill();
-
-	},
-
-	update: function(){	
-		
-		this.delta = this.opacity > 0.7 ? -0.003 : this.opacity < 0.3 ? 0.003 : this.delta;
-		this.opacity = this.opacity + this.delta;
-	}
-
-
-};
-
-var createRandomProgression = function(length){
-	var progression = [];
-	
-	for(var i = 0; i < length; i++){
-		progression = progression.concat(arpeggios[Math.floor(Math.random()*4)]);
-	}
-	
-	return progression;
-};
-
-var NOTES = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
-
-var width = window.innerWidth;
-var height = window.innerHeight;
-var playing = false;
-
-var modes = createModes();
-var noterange = createNoteRange(-35,48);
-
-var fps = 60;
-var beat = 0;
-var rhythm = 4;
-var tempo = 500;
-var notelength = 60000/tempo/1.5;
-
-var audio = new window.webkitAudioContext();
-
-var personality = new Personality();
-var keyboard = new Keyboard();
-
-function createCanon(melody,depth,shift){
-
-	var depth = depth;
-	var canon = [];
-
-	// for every depth
-	for(var d = 0; d < depth; d++){
-
-		var thisMelody = melody.slice();
-
-			// for every position except the melody
-			for(var s = 0; s < melody.length+(shift*(depth-1)); s++){
-				//console.log(s);
-				if(s < shift*d){
-					//console.log("first empty at " + s);
-					thisMelody[s] = '';
-				}
-
-				else if(s > (shift*d) + melody.length-1){
-					//console.log("last empty at " + s);
-					thisMelody[s] = '';
-				}
-
-				else {
-					//console.log("melody is at " + s);
-					thisMelody[s] = melody[s-(d*shift)];
-
-		}
-
-		
-		}
-		canon.push(thisMelody);
-		
-		
-	}
-
-	return canon;
-
-}
-
-
-function randomMelody(mode, key, length){
-
-	var melody = [];
-
-	for(var i = 0; i < length; i++){
-
-		var number = i === 0 || i === length-1 ? 1 : Math.floor(Math.random()*7);
-
-		melody.push(modeNumToNoteNum(number, modes[mode],key))
-
-	}
-
-	return melody;
-
-}
-
-
-function scaleRuns(){
-
-	var melody = [];
-
-	for(var i = 3; i < 8; i++){
-
-		var part = randomMelody('ionian','C'+i, 4).concat(
-					randomMelody('dorian','D'+i, 4),
-					randomMelody('phrygian','E'+i, 4),
-					randomMelody('lydian','F'+i, 4),
-					randomMelody('mixolydian','G'+i, 4),
-					randomMelody('aeolian','A'+i, 4),
-					randomMelody('locrian','B'+i, 4)
-
-			);
-
-		melody = melody.concat(part);
-
-	}
-
-	return melody;
-
-}
-
 
 window.onload = function(){
 
-	setCanvas("myCanvas",width,height);
+	var width = window.innerWidth;
+	var height = window.innerHeight;
 
-	melody = scaleRuns();
+	var c = getCanvas("myCanvas",width,height);
 
-	// melody, depth, shift
-	canon = createCanon(melody,4,2);
+	var keyboard = new Keyboard(c);
+	var composer = new Composer();
 
-	var melodyToPlay = canon;
+	bigBang(keyboard);
+
+	var playLoop = function(){
+		
+		composer.tempo = 160;
+		var mode = composer.getRandomMode();
+		var key = composer.getRandomKey();
+		var melody = composer.createCanonMelody(mode,key,16,3,3);
+		keyboard.playMelody(melody);
+
+		var wait = (60 / composer.tempo * melody.notes[0].length * 1000) + 5000;
+		
+		setTimeout(function(){
+			playLoop();
+		},wait);
+	}
 	
-	startTick(melodyToPlay);
-	
+	playLoop();
 }
 
 })(this);

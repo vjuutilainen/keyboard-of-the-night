@@ -104,13 +104,13 @@ var handleMouseClick = function(mouseEvent,keyboard){
 
 		return result;
 
-	}
+	};
 
 	var clickResult = clickCheck(mouseEvent);
 
 	if(clickResult !== false){
 		keyboard.playKey(clickResult,0);
-	};
+	}
 
 };
 
@@ -118,7 +118,7 @@ var Input = function(keyboard){
 	
 	this.keyboard = keyboard;
 	keyboard.canvas.addEventListener('mousedown',function(mouseEvent){
-		handleMouseClick(mouseEvent,keyboard)
+		handleMouseClick(mouseEvent,keyboard);
 	});
 };
 
@@ -130,7 +130,7 @@ Input.prototype = {
 	}
 
 
-}
+};
 
 
 // Synth constructor
@@ -155,7 +155,7 @@ Synth.prototype = {
 		this.sound = this.audio.createOscillator();
 
 		// GainNode -> Destination
-		this.gainNode = this.audio.createGainNode();
+		this.gainNode = this.audio.createGain();
 		this.gainNode.connect(this.audio.destination);
 		
 		// Oscillator -> GainNode
@@ -167,7 +167,7 @@ Synth.prototype = {
 		this.gainNode.gain.linearRampToValueAtTime(this.noteVolume, now + this.noteAttack);
 
 		// Fade out
-		this.gainNode.gain.linearRampToValueAtTime(this.noteVolume, now + this.notelength - this.noteDecay);
+		this.gainNode.gain.linearRampToValueAtTime(this.noteVolume, now + this.noteLength - this.noteDecay);
 		this.gainNode.gain.linearRampToValueAtTime(0, now + this.noteLength);
 
 		this.sound.start(now);
@@ -180,14 +180,14 @@ Synth.prototype = {
 		
 	}
 
-}
+};
 
 var Player = function(keyboard){
 
 	this.keyboard = keyboard;
 	this.tempo = 120;
 	this.beatLength = 60 / this.tempo;
-}
+};
 
 Player.prototype = {
 
@@ -230,7 +230,7 @@ var Personality = function(keyboard){
 	this.rotationTarget = 0;
 	
 
-}
+};
 
 Personality.prototype = {
 
@@ -303,7 +303,7 @@ var Display = function(keyboard){
 		this.keys.push(new Key(this.keyboard.notes[i+1], i, this));
 	}
 
-}
+};
 
 Display.prototype = {
 
@@ -330,7 +330,7 @@ Display.prototype = {
 
 	}
 
-}
+};
 
 var Key = function(note,index,display){
 
@@ -344,7 +344,7 @@ var Key = function(note,index,display){
 	this.x = this.width*((this.index+9)%12);
 	this.y = this.display.keyboard.height-this.height-(this.height*Math.floor((this.index+9)/12));
 
-}
+};
 
 Key.prototype = {
 
@@ -372,7 +372,7 @@ Key.prototype = {
 
 	}
 
-}
+};
 
 
 // Composer constructor
@@ -388,7 +388,7 @@ var Composer = function(){
 	this.noterange = this.highLimit-this.lowLimit;
 	this.tempo = 500;
 
-}
+};
 
 Composer.prototype = {
 
@@ -455,7 +455,7 @@ Composer.prototype = {
 
 		for(var i = 0; i < length; i++){
 			modeMelody.push(modeNumbers[Math.floor(Math.random()*modeNumbers.length)]);
-		};
+		}
 
 		return {notes: modeMelody,
 				tempo: this.tempo};
@@ -474,16 +474,16 @@ Composer.prototype = {
 			mixolydian: [],
 			aeolian: [],
 			locrian: []
-		}
+		};
 
 		var intervals = [2,2,1,2,2,2,1];
 
-		for(key in modes){		
+		for(var key in modes){		
 			var first = intervals.slice(0,modeShift);
 			var last = intervals.slice(modeShift,intervals.length);
 			modes[key] = last.concat(first);
 			modeShift += 1;
-		};
+		}
 
 	return modes;
 
@@ -492,7 +492,6 @@ Composer.prototype = {
 	createCanonMelody: function(mode,key,length,depth,shift){
 
 	var melody = this.createRandomModeMelody(mode,key,length);
-	var depth = depth;
 	var canon = [];
 	
 	for(var d = 0; d < depth; d++){
@@ -521,7 +520,7 @@ Composer.prototype = {
 
 }
 
-}
+};
 
 // The world
 
@@ -536,11 +535,11 @@ var bigBang = function(object){
 		setTimeout(function() {
 			requestAnimationFrame(loop);
 		}, 1000 / fps);
-	}
+	};
 
 	requestAnimationFrame(loop);
 
-}
+};
 
 // initialize canvas
 
@@ -551,7 +550,7 @@ var getCanvas = function(canvasId,width,height){
 	canvas.height = height;
 	return canvas.getContext("2d");
 
-}
+};
 
 window.onload = function(){
 
@@ -578,12 +577,12 @@ window.onload = function(){
 		setTimeout(function(){
 			playLoop();
 		},wait);
-	}
+	};
 	
 	setTimeout(function(){
 		playLoop();
 	},2000);
 	
-}
+};
 
 })(this);

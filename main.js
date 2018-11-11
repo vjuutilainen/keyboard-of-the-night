@@ -138,7 +138,7 @@ Input.prototype = {
 var Synth = function(keyboard) {
 
 	this.keyboard = keyboard;
-	this.audio = new window.webkitAudioContext();
+	this.audio = new (window.AudioContext || window.webkitAudioContext)();
 	this.noteLength = 0.5;
 	this.noteAttack = 0.1;
 	this.noteDecay = 0.1;
